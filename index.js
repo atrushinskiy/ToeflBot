@@ -109,8 +109,8 @@ bot.on("callback_query", (callBackQuery) => {
     timer.resetAC();
     //console.log('timer stop', timer)
   }
-  if(data == "start0") timer.set = 0;
-  if(data == "start1") timer.set = 1;
+  if(data == "start0") timer.setId = 0;
+  if(data == "start1") timer.setId = 1;
 
   if(data == "start0" || data == "start1") {
     if(!timer.ac) timer.ac = timer.getAC()
@@ -125,6 +125,11 @@ bot.on("callback_query", (callBackQuery) => {
       })
       .then((fn) => {
         console.log('timer3 starts ', new Date().toLocaleTimeString())
+
+        return fn.setDelay(chatId, firstCall = false, lastCall = false);
+      })
+      .then((fn) => {
+        console.log('timer4 starts ', new Date().toLocaleTimeString())
 
         return fn.setDelay(chatId, firstCall = false, lastCall = true);
       })
@@ -143,7 +148,7 @@ bot.on("callback_query", (callBackQuery) => {
 
 let getTimeout = () => {
   return {
-    set: 1,
+    setId: 1,
     minutes: 30,
     timeoutMin: 60000*30,
     aborted: false,
@@ -160,8 +165,11 @@ let getTimeout = () => {
     },
 
     setDelay: function (chatId, firstCall, lastCall) {
+      this.shuffledSet = this.shuffledSet || getShuffledSet(this.setId);
+
       if(firstCall) {
-        bot.sendMessage(chatId, `${msgTmps.beforeFirstWord} \n ${getPhraze(this.set)}`, getKeyboard(1));
+        let phraze = getPhraze(this.shuffledSet.next().value);
+        bot.sendMessage(chatId, `${msgTmps.beforeFirstWord} \n ${phraze}`, getKeyboard(1));
         bot.sendMessage(chatId, msgTmps.timerNextWord(this.minutes));
       }
 
@@ -173,7 +181,9 @@ let getTimeout = () => {
         if(!this.getAbortStatus()) {
           console.log('lastCall', lastCall)
           let keyBoard = lastCall ? getKeyboard(0) :  getKeyboard(1);
-          bot.sendMessage(chatId, getPhraze(this.set), keyBoard);
+          let phraze = getPhraze(this.shuffledSet.next().value);
+          console.log('phraze', phraze)
+          bot.sendMessage(chatId, phraze, keyBoard);
           return this;
         }
         else {
@@ -209,9 +219,9 @@ const sets = [[
 
   ]]
 
- const getPhraze = (set) => {
-    const words = sets[set];
-    const word = words[randomIntFromInterval(0,4)];
+ const getPhraze = (word) => {
+    //const words = sets[setId];
+    //const word = words[randomIntFromInterval(0,4)];
     const phraze = `${word.desc} -> ${word.pron} , Synonym:  ${word.syn} \n ${msgTmps.needAudio} \n ${ word.url}`;
     return phraze;
  }
@@ -219,6 +229,22 @@ const sets = [[
 const randomIntFromInterval = (min, max) => { // min and max included 
   return Math.floor(Math.random() * (max - min + 1) + min)
 }
+
+const getShuffledSet = (setId) => shuffle(sets[setId]);
+
+
+function* shuffle(array) {
+
+    var i = array.length;
+
+    while (i--) {
+        yield array.splice(Math.floor(Math.random() * (i+1)), 1)[0];
+    }
+
+}
+
+
+
 
 let msgTmps = {
   chooseSet : 'Hi, choose a set below to learn a new five words =)',
