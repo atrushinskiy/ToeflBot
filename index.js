@@ -16,10 +16,16 @@ const app = express()
 
 //Dependecies
 const TelegramBot = require('node-telegram-bot-api')
-const tokenBot = process.env.TELEGRAM_BOT
+let tokenBot = process.env.TELEGRAM_BOT_PROD
 
-if(process.env.NODE_ENV === 'DEVELOPMENT') console.log('DEVELOPMENT MODE')
-if(process.env.NODE_ENV === 'PRODUCTION') console.log('PRODUCTION MODE')
+if(process.env.NODE_ENV === 'DEVELOPMENT') {
+  console.log('DEVELOPMENT MODE')
+  tokenBot = process.env.TELEGRAM_BOT_DEV;
+}
+if(process.env.NODE_ENV === 'PRODUCTION') {
+  console.log('PRODUCTION MODE')
+  tokenBot = process.env.TELEGRAM_BOT_PROD;
+}
 
 //Ports
 const portHTTP = 8080
@@ -97,10 +103,12 @@ bot.on("callback_query", (callBackQuery) => {
   
   if(!chatIdList[chatId]) {
     chatIdList[chatId] = {};
-    chatIdList[chatId] = getTimeout();
+    chatIdList[chatId].timer = getTimeout();
+    chatIdList[chatId].settings = userSettings();
   }
   
-  let timer = chatIdList[chatId];
+  let timer = chatIdList[chatId].timer;
+  let settings = chatIdList[chatId].settings;
    
   console.log('chatIdList ', Object.keys(chatIdList))
 
@@ -109,98 +117,105 @@ bot.on("callback_query", (callBackQuery) => {
     timer.resetAC();
     //console.log('timer stop', timer)
   }
-  if(data == "start0") timer.setId = 0;
-  if(data == "start1") timer.setId = 1;
+  if(data == "start0") settings.setId = 0;
+  if(data == "start1") settings.setId = 1;
 
   if(data == "start0" || data == "start1") {
     if(!timer.ac) timer.ac = timer.getAC()
     if(!timer.signal) timer.signal = timer.ac.signal;
     //console.log('timer start', timer)
-    
-    timer.setDelay(chatId, firstCall = true, lastCall = false)
-      .then((fn) => {
-        console.log('timer2 starts ', new Date().toLocaleTimeString())
-        
-        return fn.setDelay(chatId, firstCall = false, lastCall = false);
-      })
-      .then((fn) => {
-        console.log('timer3 starts ', new Date().toLocaleTimeString())
+    console.log('timer start', settings)
 
-        return fn.setDelay(chatId, firstCall = false, lastCall = false);
-      })
-      .then((fn) => {
-        console.log('timer4 starts ', new Date().toLocaleTimeString())
+    //https://stackoverflow.com/questions/17891173/how-to-efficiently-randomly-select-array-item-without-repeats
+    //https://stackoverflow.com/questions/40328932/javascript-es6-promise-for-loop
 
-        return fn.setDelay(chatId, firstCall = false, lastCall = true);
-      })
-      .then((fn) => {
-        console.log('last then in chain', fn)
-      })
-      .catch((err) => {
-        console.log('Catch error -> setDelay chaining',err.code)
+      const dictionary = getDictionary();
+      const getRandomWord = dictionary.getRandomiser(sets[settings.setId]);
+      const minutes = settings.timeout;
+
+      const delay = (ms, options = {}) => new Promise( (resolve, reject) => { 
+        let timerId = setTimeout(resolve, ms, 'timeout_callback')
+        if (options.signal) {
+          // implement aborting logic for our async operation
+          options.signal.addEventListener('abort', event => {
+            clearTimeout(timerId);
+            reject(new Error('ABORT_ERR'));
+          });
+        }
+
       });
+      //const delay = ms => setTimeoutPromise(resolve, ms, 'timeout_callback', { signal: timer.signal })
+      
+      async function * delayGenerator(count , timeout) {
+        let flashCard = dictionary.getFlashCard(getRandomWord());
+        
+        bot.sendMessage(chatId, `${msgTmps.firstCard} \n ${flashCard}`, getKeyboard(1))
+        bot.sendMessage(chatId, msgTmps.nextCard(minutes));
+        for (let i = 0; i < count; i++) {
+          yield delay(timeout, { signal: timer.signal })
+          .then(() => {
+            //let keyBoard = lastCall ? getKeyboard(0) :  getKeyboard(1);
+            let keyBoard = i === count - 1 ? 0 : 1;
+            let flashCard = dictionary.getFlashCard(getRandomWord());
+            bot.sendMessage(chatId, `${flashCard}`, getKeyboard(keyBoard))
+            return i;
+          })
+          .catch((err) => {
+            bot.sendMessage(chatId, msgTmps.cancelSet, getKeyboard(0))
+            //console.log('err', err)
+            return err;
+          }); 
+        }
+      }
+
+      (async function loop() {
+        let length = sets[settings.setId].length;
+        for await (let i of delayGenerator(length, timer.timeout(minutes))) {
+          console.log('loop', i, i instanceof Error);
+          if(i instanceof Error) break; 
+        }
+      })();
     
 	
   }
 
 })
 
-
-let getTimeout = () => {
+let userSettings = () => {
   return {
     setId: 1,
-    minutes: 30,
-    timeoutMin: 60000*30,
-    aborted: false,
+    timeout: 0.1
+  }
+}
+
+
+let getTimeout = () => {
+  return { 
     getAC : function () {return new AbortController()},
-    setAbortStatus : function (value) {return this.aborted = value},
-    getAbortStatus : function () {return this.aborted},
-    abortDelay: function (chatId) {
-      //console.log('abortDelay', chatId, this)
-      
+    abortDelay: function (chatId) {     
       if(this.ac) this.ac.abort();
-      this.setAbortStatus(true);        
-      console.log('setAbortStatus', this.getAbortStatus())
-      if(this.getAbortStatus()) bot.sendMessage(chatId, msgTmps.btnCancell, getKeyboard(0));
-    },
-
-    setDelay: function (chatId, firstCall, lastCall) {
-      this.shuffledSet = this.shuffledSet || getShuffledSet(this.setId);
-
-      if(firstCall) {
-        let phraze = getPhraze(this.shuffledSet.next().value);
-        bot.sendMessage(chatId, `${msgTmps.beforeFirstWord} \n ${phraze}`, getKeyboard(1));
-        bot.sendMessage(chatId, msgTmps.timerNextWord(this.minutes));
-      }
-
-      return setTimeoutPromise(this.timeoutMin, 'timeout_callback', { signal: this.signal })
-      .then( (value) => {
-        console.log('timer ends->', value, new Date().toLocaleTimeString())
-        console.log('setTimeoutPromise abortStatus', this.getAbortStatus());
-
-        if(!this.getAbortStatus()) {
-          console.log('lastCall', lastCall)
-          let keyBoard = lastCall ? getKeyboard(0) :  getKeyboard(1);
-          let phraze = getPhraze(this.shuffledSet.next().value);
-          console.log('phraze', phraze)
-          bot.sendMessage(chatId, phraze, keyBoard);
-          return this;
-        }
-        else {
-          console.log('setTimeoutPromise else condition',this)
-          this.abortDelay(chatId)
-        }
-      })
-      .catch((err) => {
-        if(err.code === 'ABORT_ERR') console.log('Catch - the timeout was aborted', err.code);
-        return err;
-      });
     },
     resetAC : function() {
-        this.setAbortStatus(false);
-        this.ac = this.getAC()
-        this.signal = this.ac.signal;
-    }
+      this.ac = this.getAC();
+      this.signal = this.ac.signal;
+    },
+    timeout: function(mn) {return 60000 * mn}
+  }
+}
+
+let getDictionary = () => {
+  return {
+    getFlashCard:(word) => `${word.desc} -> ${word.pron} , Synonym:  ${word.syn} \n ${msgTmps.tipCard} \n ${ word.url}`,
+    getRandomiser: (array) => {
+      var copy = array.slice(0);
+      return () => {
+        if (copy.length < 1) copy = array.slice(0);
+        let index = Math.floor(Math.random() * copy.length);
+        let item = copy[index];
+        copy.splice(index, 1);
+        return item;
+      };
+    },
   }
 }
 
@@ -219,41 +234,14 @@ const sets = [[
 
   ]]
 
- const getPhraze = (word) => {
-    //const words = sets[setId];
-    //const word = words[randomIntFromInterval(0,4)];
-    const phraze = `${word.desc} -> ${word.pron} , Synonym:  ${word.syn} \n ${msgTmps.needAudio} \n ${ word.url}`;
-    return phraze;
- }
 
-const randomIntFromInterval = (min, max) => { // min and max included 
-  return Math.floor(Math.random() * (max - min + 1) + min)
+const msgTmps = {
+  chooseSet : 'Hi, choose a set to learn five new words below =)',
+  cancelSet :'TOEFL bot were cancelled',
+  firstCard : 'Here, we are! Check it out:',
+  nextCard : function (timeout) {return `You will get the next random flashcard from the set througout ${timeout} minutes)`},
+  tipCard : 'Wait, a minute! Need a audio? Just go link below:'
 }
-
-const getShuffledSet = (setId) => shuffle(sets[setId]);
-
-
-function* shuffle(array) {
-
-    var i = array.length;
-
-    while (i--) {
-        yield array.splice(Math.floor(Math.random() * (i+1)), 1)[0];
-    }
-
-}
-
-
-
-
-let msgTmps = {
-  chooseSet : 'Hi, choose a set below to learn a new five words =)',
-  btnCancell :'High five bot were cancelled',
-  beforeFirstWord : 'Here, we are! Check it out:',
-  timerNextWord : function (timeout) {return `You will get the next random word from the set througout ${timeout} minutes)`},
-  needAudio : 'Wait, a minute! Need a audio? go link below:'
-}
-//https://nodejs.org/api/timers.html
 
 
 
