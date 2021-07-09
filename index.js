@@ -41,6 +41,8 @@ server.listen(portHTTP, () => {
 //TELEGRAM BOT
 let chatIdList = {};
 const bot = new TelegramBot(tokenBot, {polling: true});
+
+
 const opts = {
         reply_to_message_id: null,
         reply_markup: JSON.stringify({
@@ -52,7 +54,49 @@ const opts = {
     })
   };
 
-const getKeyboard =(key) => {
+
+
+const intervalKeyboard =(userId) => {
+  
+  let keys = {'inline_keyboard':
+               [
+                 [{text: "45 min", callback_data: 45}],
+                 [{text: "30 min", callback_data: 30}],
+                 [{text: "15 min", callback_data: 15}],
+                 [{text: "5 min", callback_data: 5}]
+               ],
+              };
+
+  if(userId === 587265489) keys.inline_keyboard.push([{text: "1 min", callback_data: 1}]);
+  
+  const keyboard = {
+      reply_to_message_id: null,
+      reply_markup: JSON.stringify(keys)
+    }
+
+  return keyboard;
+}
+
+const optionsKeyboard =() => {
+  
+  let keys = {keyboard:
+               [
+                 ['/interval'],
+               ],
+              resize_keyboard: true, 
+              one_time_keyboard: true
+              };
+  
+  const keyboard = {
+      reply_to_message_id: null,
+      reply_markup: JSON.stringify(keys),
+    }
+
+  return keyboard;
+}
+
+
+const inlineKeyboard =(key) => {
 
   const buttons = [
     {text: 'Get a word to learn', callback_data: 'start'},
@@ -61,13 +105,14 @@ const getKeyboard =(key) => {
 
   const multyButton = [[{text: 'Choose set 1 to learn', callback_data: 'start0'}],[{text: 'Choose set 2 to learn', callback_data: 'start1'}]];
   
-  let b = key ? [[buttons[key]]] : multyButton;
+  let keys = key ? [[buttons[key]]] : multyButton;
 
   const keyboard = {
     reply_to_message_id: null,
-    reply_markup: JSON.stringify({inline_keyboard: b})}
+    reply_markup: JSON.stringify({inline_keyboard: keys})}
   return keyboard;
 }
+
 
 
 // Matches "/echo [whatever]"
@@ -81,16 +126,47 @@ bot.onText(/\/echo (.+)/, (msg, match) => {
 
   // send back the matched "whatever" to the chat
   bot.sendMessage(chatId, resp, opts);
+
 });
+
+bot.onText(/\/interval/, (msg, match) => {
+  // 'msg' is the received Message from Telegram
+  // 'match' is the result of executing the regexp above on the text content
+  // of the message
+  opts.reply_to_message_id = msg.message_id
+  const chatId = msg.chat.id;
+  const userId = msg.from.id;
+  //const resp = match[1]; // the captured "whatever"
+
+  // send back the matched "whatever" to the chat
+  bot.sendMessage(chatId, 'Choose a interval between messages with TOEFLS cards', intervalKeyboard(userId));
+
+});
+
+bot.onText(/\/options/, (msg, match) => {
+  // 'msg' is the received Message from Telegram
+  // 'match' is the result of executing the regexp above on the text content
+  // of the message
+  opts.reply_to_message_id = msg.message_id
+  const chatId = msg.chat.id;
+  const userId = msg.from.id;
+  //const resp = match[1]; // the captured "whatever"
+
+  // send back the matched "whatever" to the chat
+  bot.sendMessage(chatId, 'Choose a option for TOEFLS cards', optionsKeyboard());
+
+});
+
 
 // Listen for any kind of message. There are different kinds of
 // messages.
 bot.on('message', (msg) => {
   const chatId = msg.chat.id;
   opts.reply_to_message_id = msg.message_id
-  console.log('message')
+  console.log('message', msg)
   // send a message to the chat acknowledging receipt of their message
-  bot.sendMessage(chatId, msgTmps.chooseSet, opts);
+
+  if(!msg.entities) bot.sendMessage(chatId, msgTmps.chooseSet, opts);
 });
 
 bot.on("polling_error", console.log);
@@ -119,6 +195,29 @@ bot.on("callback_query", (callBackQuery) => {
   }
   if(data == "start0") settings.setId = 0;
   if(data == "start1") settings.setId = 1;
+  if(data === "45") { 
+    settings.timeout = parseInt(data);
+    bot.sendMessage(chatId, msgTmps.chooseSet, opts);
+  }
+
+  if(data === "30") {
+    settings.timeout = parseInt(data);
+    bot.sendMessage(chatId, msgTmps.chooseSet, opts);
+  }
+
+  if(data === "15") {
+    settings.timeout = parseInt(data);
+    bot.sendMessage(chatId, msgTmps.chooseSet, opts);
+  } 
+
+  if(data === "5") {
+    settings.timeout = parseInt(data);
+    bot.sendMessage(chatId, msgTmps.chooseSet, opts);
+  }
+  if(data === "1") {
+    settings.timeout = parseInt(data)/10;
+    bot.sendMessage(chatId, msgTmps.chooseSet, opts);
+  }
 
   if(data == "start0" || data == "start1") {
     if(!timer.ac) timer.ac = timer.getAC()
@@ -149,19 +248,19 @@ bot.on("callback_query", (callBackQuery) => {
       async function * delayGenerator(count , timeout) {
         let flashCard = dictionary.getFlashCard(getRandomWord());
         
-        bot.sendMessage(chatId, `${msgTmps.firstCard} \n ${flashCard}`, getKeyboard(1))
+        bot.sendMessage(chatId, `${msgTmps.firstCard} \n ${flashCard}`, inlineKeyboard(1))
         bot.sendMessage(chatId, msgTmps.nextCard(minutes));
         for (let i = 0; i < count; i++) {
           yield delay(timeout, { signal: timer.signal })
           .then(() => {
-            //let keyBoard = lastCall ? getKeyboard(0) :  getKeyboard(1);
+            //let keyBoard = lastCall ? inlineKeyboard(0) :  inlineKeyboard(1);
             let keyBoard = i === count - 1 ? 0 : 1;
             let flashCard = dictionary.getFlashCard(getRandomWord());
-            bot.sendMessage(chatId, `${flashCard}`, getKeyboard(keyBoard))
+            bot.sendMessage(chatId, `${flashCard}`, inlineKeyboard(keyBoard))
             return i;
           })
           .catch((err) => {
-            bot.sendMessage(chatId, msgTmps.cancelSet, getKeyboard(0))
+            bot.sendMessage(chatId, msgTmps.cancelSet, inlineKeyboard(0))
             //console.log('err', err)
             return err;
           }); 
@@ -249,3 +348,9 @@ const msgTmps = {
 
 
 
+/*
+
+interval - Set period of time between messages with TOEFL FlashCards
+options - Set options for TOEFL FlashCards
+
+*/
