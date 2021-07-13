@@ -171,12 +171,18 @@ bot.on('message', (msg) => {
 
 bot.on("polling_error", console.log);
 
+
+
 bot.on("callback_query", (callBackQuery) => {
   const data = callBackQuery.data
   const msg = callBackQuery.message
   const chatId = msg.chat.id;
-	console.log('callback_query enter => ', data)
+	console.log('callback_query enter => ', data, new Date().toString(), callBackQuery)
   
+ /* POP UP triggered by INLINE keyboard*/
+ // bot.answerCallbackQuery(callBackQuery.id, {text: 'You successfully clicked the button', show_alert: false})
+/**/
+
   if(!chatIdList[chatId]) {
     chatIdList[chatId] = {};
     chatIdList[chatId].timer = getTimeout();
@@ -283,7 +289,7 @@ bot.on("callback_query", (callBackQuery) => {
 let userSettings = () => {
   return {
     setId: 1,
-    timeout: 0.1
+    timeout: 5
   }
 }
 
@@ -353,4 +359,9 @@ const msgTmps = {
 interval - Set period of time between messages with TOEFL FlashCards
 options - Set options for TOEFL FlashCards
 
+*/
+
+/*
+https://speech.microsoft.com/portal/578716f61a894609ae5a30025b84713c/audiocontentcreation
+https://docs.google.com/spreadsheets/d/14N-84W12l_WxY7l038HQiqSIEEbOJFbcjnEfWk0fwUk/edit?usp=drive_web&ouid=110277816954849002273
 */
