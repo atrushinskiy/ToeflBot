@@ -4,17 +4,20 @@ const isWin = process.platform === 'win32'
 //Server
 const util = require('util');
 const setTimeoutPromise = util.promisify(setTimeout);
-const async = require('async')
-const dotenv = require('dotenv').config()
-const http = require('http')
-const https = require('https')
-const path = require("path")
-const url = require('url')
-const express = require('express')
-const app = express()
+const async = require('async');
+const dotenv = require('dotenv').config();
+const http = require('http');
+const https = require('https');
+const path = require("path");
+const url = require('url');
+const express = require('express');
+const app = express();
+var fs = require('fs');
+var zlib = require('zlib');
 
 
 //Dependecies
+const { MongoClient } = require('mongodb');
 const TelegramBot = require('node-telegram-bot-api')
 let tokenBot = process.env.TELEGRAM_BOT_PROD
 
@@ -48,13 +51,19 @@ const opts = {
         reply_markup: JSON.stringify({
         inline_keyboard: 
         [
-            [{text: 'Choose set 1 to learn', callback_data: 'start0'}],
-            [{text: 'Choose set 2 to learn', callback_data: 'start1'}],
+            [{text: 'Choose TOEFL Theme', callback_data: 'theme'}],
+            [{text: 'Learn random set', callback_data: 'random'}],
         ]
     })
   };
 
-
+const themesKeyboard = (themes) => {
+        const keyboard = {
+          reply_to_message_id: null,
+          reply_markup: JSON.stringify({inline_keyboard: themes})
+      }
+      return keyboard;
+}
 
 const intervalKeyboard =(userId) => {
   
@@ -96,20 +105,24 @@ const optionsKeyboard =() => {
 }
 
 
-const inlineKeyboard =(key) => {
+const cancelKeyboard =(url) => {
 
-  const buttons = [
-    {text: 'Get a word to learn', callback_data: 'start'},
-    {text: 'Stop memorising', callback_data: 'stop'},
-    {text: 'Get a word again)', callback_data: 'start'},];
-
-  const multyButton = [[{text: 'Choose set 1 to learn', callback_data: 'start0'}],[{text: 'Choose set 2 to learn', callback_data: 'start1'}]];
+  const key = [[{text: 'On Instagram', callback_data: 'instagram', url: url}],[{text: 'Stop memorising', callback_data: 'stop'}],];
   
-  let keys = key ? [[buttons[key]]] : multyButton;
-
   const keyboard = {
     reply_to_message_id: null,
-    reply_markup: JSON.stringify({inline_keyboard: keys})}
+    reply_markup: JSON.stringify({inline_keyboard: key})}
+  return keyboard;
+}
+
+
+const instagramKeyboard =(url) => {
+
+  const key = [[{text: 'On Instagram', callback_data: 'instagram', url: url}],];
+  
+  const keyboard = {
+    reply_to_message_id: null,
+    reply_markup: JSON.stringify({inline_keyboard: key})}
   return keyboard;
 }
 
@@ -199,8 +212,7 @@ bot.on("callback_query", (callBackQuery) => {
     timer.resetAC();
     //console.log('timer stop', timer)
   }
-  if(data == "start0") settings.setId = 0;
-  if(data == "start1") settings.setId = 1;
+
   if(data === "45") { 
     settings.timeout = parseInt(data);
     bot.sendMessage(chatId, msgTmps.chooseSet, opts);
@@ -225,17 +237,42 @@ bot.on("callback_query", (callBackQuery) => {
     bot.sendMessage(chatId, msgTmps.chooseSet, opts);
   }
 
-  if(data == "start0" || data == "start1") {
+  if(data == "theme") {
+    //            [{text: 'Choose TOEFL Theme', callback_data: 'theme'}],
+    themesDB().
+      then(res => {
+        let themes = res.map(el => {
+          return [{text: el.theme, callback_data: el.themeId}]
+        })
+
+        let keyboard = themesKeyboard(themes.slice(0,1));
+        console.log(keyboard)
+        bot.sendMessage(chatId, msgTmps.chooseSet, keyboard);
+     })
+  }
+  if(data == "nature1") {
+
+  }
+  if(data == "nature") {
     if(!timer.ac) timer.ac = timer.getAC()
     if(!timer.signal) timer.signal = timer.ac.signal;
     //console.log('timer start', timer)
     console.log('timer start', settings)
-
+    
     //https://stackoverflow.com/questions/17891173/how-to-efficiently-randomly-select-array-item-without-repeats
     //https://stackoverflow.com/questions/40328932/javascript-es6-promise-for-loop
 
-      const dictionary = getDictionary();
-      const getRandomWord = dictionary.getRandomiser(sets[settings.setId]);
+    runGenerator (timer, settings, chatId)
+	
+  }
+
+})
+
+
+function runGenerator (timer, settings, chatId) {
+      
+      const publishInstagramURL = false;
+      const dictionary = getDictionary(publishInstagramURL);
       const minutes = settings.timeout;
 
       const delay = (ms, options = {}) => new Promise( (resolve, reject) => { 
@@ -251,40 +288,97 @@ bot.on("callback_query", (callBackQuery) => {
       });
       //const delay = ms => setTimeoutPromise(resolve, ms, 'timeout_callback', { signal: timer.signal })
       
-      async function * delayGenerator(count , timeout) {
-        let flashCard = dictionary.getFlashCard(getRandomWord());
+      async function * delayGenerator(count , timeout, randomWord) {
+        let flashCard = dictionary.getFlashCard(randomWord);
+        console.log('delayGenerator randomWord', randomWord, count)
+        yield getVideoDB({word: randomWord.word})
+         .then(res => {
+           console.log('main', res.word)
+           let inflated = zlib.inflateSync(new Buffer(res.media.deflated, 'base64')).toString();
+           let video = Buffer.from(inflated, 'base64');
+           const fileOptions = {
+             // Explicitly specify the file name.
+             filename: res.word,
+             // Explicitly specify the MIME type.
+             contentType: 'application/octet-stream',
+            };
+            
+            bot.sendVideo(chatId, video, {}, fileOptions);  
+         })
+         .then(() => {
+
+            //bot.sendMessage(chatId, 'Check it out on Instagram', instagramKeyboard(randomWord.url));
+            bot.sendMessage(chatId, msgTmps.nextCard(minutes));
+            bot.sendMessage(chatId, `${msgTmps.firstCard} \n ${flashCard}`, cancelKeyboard(randomWord.url))
+            return 'getVideoDB done';
+         })
+         .catch(console.error);
         
-        bot.sendMessage(chatId, `${msgTmps.firstCard} \n ${flashCard}`, inlineKeyboard(1))
-        bot.sendMessage(chatId, msgTmps.nextCard(minutes));
+
         for (let i = 0; i < count; i++) {
+
+          let randomWord = settings.getRandomWord();
+
           yield delay(timeout, { signal: timer.signal })
           .then(() => {
-            //let keyBoard = lastCall ? inlineKeyboard(0) :  inlineKeyboard(1);
-            let keyBoard = i === count - 1 ? 0 : 1;
-            let flashCard = dictionary.getFlashCard(getRandomWord());
-            bot.sendMessage(chatId, `${flashCard}`, inlineKeyboard(keyBoard))
+            
+            let keyBoard = i === count - 1 ? opts : cancelKeyboard(randomWord.url);
+            let flashCard = dictionary.getFlashCard(randomWord);
+            bot.sendMessage(chatId, `${flashCard}`, keyBoard)
             return i;
           })
           .catch((err) => {
-            bot.sendMessage(chatId, msgTmps.cancelSet, inlineKeyboard(0))
+            bot.sendMessage(chatId, msgTmps.cancelSet, opts)
             //console.log('err', err)
             return err;
-          }); 
+          });
+
+          yield getVideoDB({word: randomWord.word})
+           .then(res => {
+             console.log('main', res.word)
+             let inflated = zlib.inflateSync(new Buffer(res.media.deflated, 'base64')).toString();
+             let video = Buffer.from(inflated, 'base64');
+             const fileOptions = {
+               // Explicitly specify the file name.
+               filename: res.word,
+               // Explicitly specify the MIME type.
+               contentType: 'application/octet-stream',
+              };
+            
+              bot.sendVideo(chatId, video, {}, fileOptions);
+              return i;  
+            })
+           .catch(console.error);
         }
       }
 
+      /*MAIN FUCTION*/
       (async function loop() {
-        let length = sets[settings.setId].length;
-        for await (let i of delayGenerator(length, timer.timeout(minutes))) {
-          console.log('loop', i, i instanceof Error);
-          if(i instanceof Error) break; 
+        settings.isGeneratorRunning = true;
+        const setDB = await getSetDB({theme: 'nature'});
+        settings.getRandomWord = dictionary.getRandomiser(setDB);       
+        let length = setDB.length;
+        console.log('setDB')
+        
+        try {
+          for await (let i of delayGenerator(length, timer.timeout(minutes), settings.getRandomWord())) {
+            console.log('loop generator for await', i, i instanceof Error);
+            if(i instanceof Error) {
+              settings.isGeneratorRunning = false;
+              break; 
+            } 
+          }
+        } finally {
+          console.log('finally generator internal')
+          settings.isGeneratorRunning = false;
         }
-      })();
-    
-	
-  }
+        
 
-})
+      })();
+
+
+
+}
 
 let userSettings = () => {
   return {
@@ -308,9 +402,10 @@ let getTimeout = () => {
   }
 }
 
-let getDictionary = () => {
+let getDictionary = (permission) => {
+  let externalURL = permission;
   return {
-    getFlashCard:(word) => `${word.desc} -> ${word.pron} , Synonym:  ${word.syn} \n ${msgTmps.tipCard} \n ${ word.url}`,
+    getFlashCard:(flashCard) => `${flashCard.word} -> ${flashCard.meta.transcription} , Eg.:  ${flashCard.meta.eg} \n ${msgTmps.tipCard} \n ${ externalURL ? flashCard.url : ''}`,
     getRandomiser: (array) => {
       var copy = array.slice(0);
       return () => {
@@ -324,20 +419,6 @@ let getDictionary = () => {
   }
 }
 
-const sets = [[
-    {url: 'https://www.instagram.com/p/CQaZaQENJzc/', desc:'Endow', pron: "/ɪnˈdaʊ/", syn: 'Donate'},
-    {url: 'https://www.instagram.com/p/CQaylbptUu8/', desc:'Forestall', pron: "/fɔːrˈstɑːl/", syn: 'Prevent'},
-    {url: 'https://www.instagram.com/p/CP0KqeWHEsV/', desc:'Prone', pron: "/proʊn/", syn: 'Disposed'},
-    {url: 'https://www.instagram.com/p/CNFvhaGr-Xv/', desc:'Augment', pron: "/ɑːɡˈment/", syn: 'Boost'},
-    {url: 'https://www.instagram.com/p/CMbeuk2FKbT/', desc:'Vibrant', pron: "/ˈvaɪ.brənt/", syn: 'Energetic '},
-  ],[
-    {url: 'https://www.instagram.com/p/CKGdOnuMXq3', desc:'Wretched', pron: "/ˈretʃ.ɪd/", syn: 'Worthless'},
-    {url: 'https://www.instagram.com/p/CJiaEs0M358/', desc:'Nuance', pron: "/ˈnuː.ɑːns/", syn: 'Subtlety'},
-    {url: 'https://www.instagram.com/p/CJaXHHlBOdw/', desc:'Fortitude', pron: "/ˈel.ə.kwənt/", syn: 'Courage'},
-    {url: 'https://www.instagram.com/p/CJAnJb3hrl9/', desc:'Eloquent', pron: "/ɑːɡˈment/", syn: 'Fluency'},
-    {url: 'https://www.instagram.com/p/CI_AJZGFfrw/', desc:'Imprudent', pron: "/ɪmˈpruː.dənt/", syn: 'Irresponsible'},
-
-  ]]
 
 
 const msgTmps = {
@@ -349,7 +430,267 @@ const msgTmps = {
 }
 
 
+function getFlashcardRecord ( jsonRecord ) {
+  
+  let record =  {
+    theme: jsonRecord.theme,
+    topic: jsonRecord.topic,
+    set: jsonRecord.set,
+    word: jsonRecord.word,
+    meta: {
+      class: jsonRecord.class,
+      transcription: jsonRecord.transcription,
+      context: jsonRecord.context,
+      eg: jsonRecord.eg,
+      level: jsonRecord.level,
+      freq: jsonRecord.freq,
+    },
+    url: jsonRecord.url,
+    imgAuth: jsonRecord.imgAuth,
+    media: {
+      videoId: "",
+      audioId: "",
+    }
+  }
+  
+  return record; 
+}
 
+
+const jsonRecords = [
+  {
+    "theme": "nature",
+    "topic": "crops",
+    "set": "nature_1",
+    "word": "abandon",
+    "class": "v.",
+    "transcription": "/əˈbændən/",
+    "freq": 4,
+    "level": "B1",
+    "context": "Farmers will be forced to abandon trees in favour of food crops.",
+    "eg": "Abandon - to leave a place, thing, or person, usually for ever.",
+    "url": "https://www.instagram.com/p/CSHD95jscjA/",
+    "imgAuth": ""
+  },
+  {
+    "theme": "nature",
+    "topic": "crops",
+    "set": "nature_1",
+    "word": "adverse",
+    "class": "adv.",
+    "transcription": "/ædˈvɝːs/",
+    "freq": 4,
+    "level": "C2",
+    "context": "Conflicts and adverse climate exacerbate food crises in Africa and elsewhere.",
+    "eg": "Adverse - having a negative or harmful effect on something.",
+    "url": "https://www.instagram.com/p/CSEtflqs2Ri/",
+    "imgAuth": ""
+  },
+  {
+    "theme": "nature",
+    "topic": "crops",
+    "set": "nature_1",
+    "word": "cultivation",
+    "class": "n.",
+    "transcription": "/ˌkʌl·təˈveɪ·ʃən/",
+    "freq": 3,
+    "level": "C1",
+    "context": "Firstly, olive cultivation involves intensive manual labour.",
+    "eg": "Cultivation - to prepare land and grow crops on it, or to grow a particular crop.",
+    "url": "https://www.instagram.com/p/CSEAKR8MfeI/",
+    "imgAuth": ""
+  },
+  {
+    "theme": "nature",
+    "topic": "crops",
+    "set": "nature_1",
+    "word": "harvest",
+    "class": "n.",
+    "transcription": "/ˈhɑːrvɪst/",
+    "freq": 3,
+    "level": "C1",
+    "context": "The harvest began 15-20 days earlier than usual.",
+    "eg": "The harvest is the gathering of a crop",
+    "url": "https://www.instagram.com/p/CSONruCilo-/",
+    "imgAuth": "https://unsplash.com/photos/uQN9KaPTeI4"
+  },
+  {
+    "theme": "nature",
+    "topic": "crops",
+    "set": "nature_1",
+    "word": "intensify",
+    "class": "v.",
+    "transcription": "/ɪnˈten.sə.faɪ/",
+    "freq": 3,
+    "level": "C2",
+    "context": "Both rain-fed and irrigated agriculture will have to intensify.",
+    "eg": "If you intensify something or if it intensifies, it becomes greater in strength, amount, or degree.",
+    "url": "https://www.instagram.com/p/CSJRr36sC-Z/",
+    "imgAuth": "https://unsplash.com/photos/xDLEUTWCZdc"
+  },
+  {
+    "theme": "nature",
+    "topic": "crops",
+    "set": "nature_1",
+    "word": "irrigate",
+    "class": "v.",
+    "transcription": "/ˈɪr.ə.ɡeɪt/",
+    "freq": 2,
+    "level": "C2",
+    "context": "With these infrastructure, the farmers can irrigate their fields thoroughly.",
+    "eg": "Irrigate - to supply land with water so that crops and plants will grow.",
+    "url": "https://www.instagram.com/p/CSORBZAM5lA/",
+    "imgAuth": "https://unsplash.com/photos/peBIF9jpwio"
+  }
+]
+
+
+/*MONGODB*/
+const uri = process.env.MONGODB;
+
+
+async function getSetDB(theme) {
+
+  const client = new MongoClient(uri);
+  let result;
+  try {
+    await client.connect();
+    await getFlashCardSet(client, theme)
+      .then(res => {
+        result = res;
+        console.log('getSetDB then',)
+      });
+    
+  } catch (e) {
+    console.error(e);
+  } finally {
+    await client.close();
+    return result;
+  }
+  
+}
+
+
+async function getVideoDB(word) {
+
+  const client = new MongoClient(uri);
+  let result;
+  try {
+    await client.connect();
+    await getFlashCardVideo(client, word)
+      .then(res => {
+        result = res;
+        console.log('getVideoDB then', res.word)
+      });
+    
+  } catch (e) {
+    console.error(e);
+  } finally {
+    await client.close();
+    return result;
+  }
+  
+}
+
+async function insertMetaDB(record) {
+
+  const client = new MongoClient(uri);
+  let result;
+  try {
+    await client.connect();
+    let flashCard = getFlashcardRecord(record);    
+    await insertFlashCardMeta(client, flashCard)
+    await insertFlashCardVideo(client, flashCard, {media: {} })
+
+  } catch (e) {
+    console.error(e);
+  } finally {
+    await client.close();
+    return result;
+  }
+  
+}
+
+
+async function getFlashCardSet (client, theme) {
+
+  const result = await client.db("flashcards").collection("toefl").find({}, theme).toArray();
+  
+  console.log('getFlashCardSet', result)
+  return result;
+}
+
+
+async function insertFlashCardVideo (client, flashCard, flashCardVideo) {
+  let pathVideo = `./toefl/${flashCard.theme}/${flashCard.word}/${flashCard.theme}-${flashCard.word}.mp4`
+  let video = fs.readFileSync(pathVideo, 'base64');
+  let deflated = zlib.deflateSync(video).toString('base64');
+  flashCardVideo.word = flashCard.word;
+  flashCardVideo.media.deflated = deflated;
+
+  /*let pathAudio = `./toefl/${flashCard.topic}/${flashCard.word}/${flashCard.topic}-${flashCard.word}.mp4`
+  let audio = fs.readFileSync(pathAudio, 'base64');
+  flashCard.media.audio = audio;*/
+  
+  await client.db("flashcards").collection("video").insertOne(flashCardVideo);
+  
+  console.log('insertFlashCardVideo path', path)
+
+}
+
+async function insertFlashCardMeta (client, flashCard) {
+
+  const result = await client.db("flashcards").collection("toefl").insertOne(flashCard);
+  
+  console.log('insertFlashCardMeta ')
+  return result;
+}
+
+
+async function updateFlashCardVideo (client, word) {
+  var mp4 = fs.readFileSync('./toefl/nature/abandon/nature-abandon.mp4', 'base64');
+  const result = await client.db("flashcards").collection("toefl").updateOne({word},{ $set: {media: {video: mp4}}});
+  console.log('updateFlashCardVideo', result)
+
+}
+
+async function getFlashCardVideo (client, word) {
+  console.log('getFlashCardVideo', word)
+  const result = await client.db("flashcards").collection("video").findOne(word);
+  console.log('getFlashCardVideo', result.word)
+  return result;
+
+}
+
+async function themesDB() {
+
+  const client = new MongoClient(uri);
+  let result;
+  try {
+    await client.connect();
+    await getThemes(client)
+      .then(res => {
+        result = res.themes;
+        console.log('getThemes', result)
+      });
+
+  } catch (e) {
+    console.error(e);
+  } finally {
+    await client.close();
+    return result;
+  }
+  
+}
+
+async function getThemes (client) {
+  return await client.db("flashcards").collection("theme").findOne({nav:'themes'});
+}
+
+
+if(process.env.NODE_ENV === 'DEVELOPMENT') {
+  //insertMetaDB(jsonRecords[5]).then(res => console.log('main', res.word)).catch(console.error);
+}
 
 
 
@@ -364,4 +705,19 @@ options - Set options for TOEFL FlashCards
 /*
 https://speech.microsoft.com/portal/578716f61a894609ae5a30025b84713c/audiocontentcreation
 https://docs.google.com/spreadsheets/d/14N-84W12l_WxY7l038HQiqSIEEbOJFbcjnEfWk0fwUk/edit?usp=drive_web&ouid=110277816954849002273
+https://www.addmusictophoto.com/
+https://unsplash.com/
+https://csvjson.com/csv2json
+
+Dictionaries
+https://dictionary.cambridge.org/
+https://www.collinsdictionary.com/dictionary/english
+https://context.reverso.net
+https://context.reverso.net/translation/
+https://www.oxfordlearnersdictionaries.com/definition/english/
 */
+
+/*
+//84.201.159.199
+*/
+
