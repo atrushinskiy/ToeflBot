@@ -52,7 +52,7 @@ const opts = {
         inline_keyboard: 
         [
             [{text: 'Choose TOEFL Theme', callback_data: 'theme'}],
-            [{text: 'Learn random set', callback_data: 'random'}],
+            [{text: 'Learn random word', callback_data: 'random'}],
         ]
     })
   };
@@ -107,7 +107,7 @@ const optionsKeyboard =() => {
 
 const cancelKeyboard =(url) => {
 
-  const key = [[{text: 'On Instagram', callback_data: 'instagram', url: url}],[{text: 'Stop memorising', callback_data: 'stop'}],];
+  const key = [[{text: 'On Instagram', callback_data: 'instagram', url: url}],[{text: 'Cancel TOEFL BOT', callback_data: 'stop'}],];
   
   const keyboard = {
     reply_to_message_id: null,
@@ -156,6 +156,21 @@ bot.onText(/\/interval/, (msg, match) => {
 
 });
 
+bot.onText(/\/start/, (msg, match) => {
+  // 'msg' is the received Message from Telegram
+  // 'match' is the result of executing the regexp above on the text content
+  // of the message
+  opts.reply_to_message_id = msg.message_id
+  const chatId = msg.chat.id;
+  const userId = msg.from.id;
+  //const resp = match[1]; // the captured "whatever"
+
+  // send back the matched "whatever" to the chat
+  bot.sendMessage(chatId, msgTmps.chooseTheme, opts);
+
+});
+
+
 bot.onText(/\/options/, (msg, match) => {
   // 'msg' is the received Message from Telegram
   // 'match' is the result of executing the regexp above on the text content
@@ -179,7 +194,7 @@ bot.on('message', (msg) => {
   console.log('message', msg)
   // send a message to the chat acknowledging receipt of their message
 
-  if(!msg.entities) bot.sendMessage(chatId, msgTmps.chooseSet, opts);
+  if(!msg.entities) bot.sendMessage(chatId, msgTmps.chooseTheme, opts);
 });
 
 bot.on("polling_error", console.log);
@@ -215,26 +230,26 @@ bot.on("callback_query", (callBackQuery) => {
 
   if(data === "45") { 
     settings.timeout = parseInt(data);
-    bot.sendMessage(chatId, msgTmps.chooseSet, opts);
+    bot.sendMessage(chatId, msgTmps.chooseTheme, opts);
   }
 
   if(data === "30") {
     settings.timeout = parseInt(data);
-    bot.sendMessage(chatId, msgTmps.chooseSet, opts);
+    bot.sendMessage(chatId, msgTmps.chooseTheme, opts);
   }
 
   if(data === "15") {
     settings.timeout = parseInt(data);
-    bot.sendMessage(chatId, msgTmps.chooseSet, opts);
+    bot.sendMessage(chatId, msgTmps.chooseTheme, opts);
   } 
 
   if(data === "5") {
     settings.timeout = parseInt(data);
-    bot.sendMessage(chatId, msgTmps.chooseSet, opts);
+    bot.sendMessage(chatId, msgTmps.chooseTheme, opts);
   }
   if(data === "1") {
     settings.timeout = parseInt(data)/10;
-    bot.sendMessage(chatId, msgTmps.chooseSet, opts);
+    bot.sendMessage(chatId, msgTmps.chooseTheme, opts);
   }
 
   if(data == "theme") {
@@ -250,6 +265,50 @@ bot.on("callback_query", (callBackQuery) => {
         bot.sendMessage(chatId, msgTmps.chooseSet, keyboard);
      })
   }
+
+  if(data == "random") {
+    const publishInstagramURL = false;
+    const dictionary = getDictionary(publishInstagramURL);
+
+
+
+    const delay = (ms) => new Promise( (resolve, reject) => setTimeout(resolve, ms));
+
+    //bot.sendDice(chatId)
+
+
+   async function test() {
+     await bot.sendDice(chatId);
+     await delay(3000);
+     await getRandomCardDB()
+      .then((res)=> {
+        const randomWord =res[0].word;
+        let flashCard = dictionary.getFlashCard(res[0]);
+        bot.sendMessage(chatId, `${flashCard}`)
+        return getVideoDB({word: randomWord})
+      })
+      .then((res) => {
+        console.log('random word', res.word)
+        let inflated = zlib.inflateSync(new Buffer(res.media.deflated, 'base64')).toString();
+        let video = Buffer.from(inflated, 'base64');
+        const fileOptions = {
+          // Explicitly specify the file name.
+          filename: res.word,
+          // Explicitly specify the MIME type.
+          contentType: 'application/octet-stream',
+        };
+            
+        return bot.sendVideo(chatId, video, {}, fileOptions);         
+      })
+      .then(()=> {
+        return bot.sendMessage(chatId, "Voila!", opts)
+      })
+   }
+
+
+  test() 
+  }
+  
   if(data == "nature1") {
 
   }
@@ -292,6 +351,14 @@ function runGenerator (timer, settings, chatId) {
         let flashCard = dictionary.getFlashCard(randomWord);
         console.log('delayGenerator randomWord', randomWord, count)
         yield getVideoDB({word: randomWord.word})
+          .then((res) => {
+
+            //bot.sendMessage(chatId, 'Check it out on Instagram', instagramKeyboard(randomWord.url));
+            
+            bot.sendMessage(chatId, `${msgTmps.firstCard} \n ${flashCard}`)
+
+            return res;
+         })
          .then(res => {
            console.log('main', res.word)
            let inflated = zlib.inflateSync(new Buffer(res.media.deflated, 'base64')).toString();
@@ -303,14 +370,10 @@ function runGenerator (timer, settings, chatId) {
              contentType: 'application/octet-stream',
             };
             
-            bot.sendVideo(chatId, video, {}, fileOptions);  
-         })
-         .then(() => {
-
-            //bot.sendMessage(chatId, 'Check it out on Instagram', instagramKeyboard(randomWord.url));
-            bot.sendMessage(chatId, msgTmps.nextCard(minutes));
-            bot.sendMessage(chatId, `${msgTmps.firstCard} \n ${flashCard}`, cancelKeyboard(randomWord.url))
-            return 'getVideoDB done';
+            return bot.sendVideo(chatId, video, {}, fileOptions);  
+         }).then(()=> {
+            bot.sendMessage(chatId, msgTmps.nextCard(minutes), cancelKeyboard(randomWord.url));
+            return "video done"
          })
          .catch(console.error);
         
@@ -321,7 +384,6 @@ function runGenerator (timer, settings, chatId) {
 
           yield delay(timeout, { signal: timer.signal })
           .then(() => {
-            
             let keyBoard = i === count - 1 ? opts : cancelKeyboard(randomWord.url);
             let flashCard = dictionary.getFlashCard(randomWord);
             bot.sendMessage(chatId, `${flashCard}`, keyBoard)
@@ -345,9 +407,14 @@ function runGenerator (timer, settings, chatId) {
                contentType: 'application/octet-stream',
               };
             
-              bot.sendVideo(chatId, video, {}, fileOptions);
-              return i;  
+              return bot.sendVideo(chatId, video, {}, fileOptions);
+                
             })
+           .then(() => {
+              //let keyBoard = i === count - 1 ? opts : cancelKeyboard(randomWord.url);
+              //bot.sendMessage(chatId, "Learn more on Instagram", keyBoard)
+            return i;
+           })
            .catch(console.error);
         }
       }
@@ -405,7 +472,7 @@ let getTimeout = () => {
 let getDictionary = (permission) => {
   let externalURL = permission;
   return {
-    getFlashCard:(flashCard) => `${flashCard.word} -> ${flashCard.meta.transcription} , Eg.:  ${flashCard.meta.eg} \n ${msgTmps.tipCard} \n ${ externalURL ? flashCard.url : ''}`,
+    getFlashCard:(flashCard) => `${capitalizeFirstLetter(flashCard.word)} -> ${flashCard.meta.transcription} \nEg.:  ${flashCard.meta.context}  \nExp.: ${flashCard.meta.eg} \n ${ externalURL ? flashCard.url : ''}`,
     getRandomiser: (array) => {
       var copy = array.slice(0);
       return () => {
@@ -422,9 +489,10 @@ let getDictionary = (permission) => {
 
 
 const msgTmps = {
-  chooseSet : 'Hi, choose a set to learn five new words below =)',
+  chooseTheme : 'Would you like to learn theme or random word?',
+  chooseSet : 'Choose a theme to learn =)',
   cancelSet :'TOEFL bot were cancelled',
-  firstCard : 'Here, we are! Check it out:',
+  firstCard : 'Let\'s start :)',
   nextCard : function (timeout) {return `You will get the next random flashcard from the set througout ${timeout} minutes)`},
   tipCard : 'Wait, a minute! Need a audio? Just go link below:'
 }
@@ -454,6 +522,10 @@ function getFlashcardRecord ( jsonRecord ) {
   }
   
   return record; 
+}
+
+function capitalizeFirstLetter(string) {
+  return string.charAt(0).toUpperCase() + string.slice(1);
 }
 
 
@@ -549,6 +621,28 @@ const jsonRecords = [
 const uri = process.env.MONGODB;
 
 
+
+async function getRandomCardDB() {
+
+  const client = new MongoClient(uri);
+  let result;
+  try {
+    await client.connect();
+    await getRandomFlashCard(client)
+      .then(res => {
+        result = res;
+        console.log('getRandomCardDB then', )
+      });
+    
+  } catch (e) {
+    console.error(e);
+  } finally {
+    await client.close();
+    return result;
+  }
+  
+}
+
 async function getSetDB(theme) {
 
   const client = new MongoClient(uri);
@@ -558,7 +652,7 @@ async function getSetDB(theme) {
     await getFlashCardSet(client, theme)
       .then(res => {
         result = res;
-        console.log('getSetDB then',)
+        console.log('getSetDB then')
       });
     
   } catch (e) {
@@ -617,6 +711,14 @@ async function getFlashCardSet (client, theme) {
   const result = await client.db("flashcards").collection("toefl").find({}, theme).toArray();
   
   console.log('getFlashCardSet', result)
+  return result;
+}
+
+async function getRandomFlashCard (client) {
+
+  const result = await client.db("flashcards").collection("toefl").aggregate([ { $sample: { size: 1 } } ]).toArray();
+  
+  console.log('getRandomFlashCard', result)
   return result;
 }
 
