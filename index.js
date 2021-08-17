@@ -35,6 +35,12 @@ const portHTTP = 8080
 const portHTTPS = 8443
 const port = isWin ? portHTTP : portHTTPS
 
+app.get('/', (req, res) => {
+  res.sendFile('index.html', {root: __dirname })
+  //res.render('../static/views/index',{page:'main', marker: null, markerEncoded: null, dayjs: dayjs});
+  console.log('get /');
+})
+
 const server = http.createServer(app)
 server.listen(portHTTP, () => {
   console.log('HTTPS Server running on port ' + port)
