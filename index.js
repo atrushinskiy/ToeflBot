@@ -42,7 +42,7 @@ app.get('/', (req, res) => {
 })
 
 const server = http.createServer(app)
-server.listen(8443,"127.0.0.1", () => {
+server.listen(8443,"0.0.0.0", () => {
   console.log('HTTPS Server running on port ' + port)
 })
 
