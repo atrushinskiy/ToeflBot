@@ -119,22 +119,7 @@ bot.on('message', (msg) => {
     if(chatIdList[chatId].settings.puzzle === puzzle) {
       chatIdList[chatId].settings.game = false;
       bot.sendMessage(chatId, msgTmps.puzzleSolved)
-      
-      getAudioDB({word: puzzle})
-        .then(res => {
-          console.log('random word', res.word)
-          let deflatedWord = zlib.inflateSync(new Buffer(res.media.deflatedWord, 'base64')).toString();
-          let audio = Buffer.from(deflatedWord, 'base64');
-          const fileOptions = {
-            // Explicitly specify the file name.
-            filename: puzzle,
-            // Explicitly specify the MIME type.
-            contentType: 'application/octet-stream',
-          };
-            
-          return bot.sendAudio(chatId, audio, opts, fileOptions);  
-        })
-
+      getAnswer(puzzle, chatId);
 
     } else {
       bot.sendMessage(chatId, msgTmps.puzzleWrong, answerBoard)
@@ -179,7 +164,8 @@ bot.on("callback_query", (callBackQuery) => {
   if(data == "answer") {
     chatIdList[chatId].settings.game = false;
     let answer = `Correct word is ${settings.puzzle}.`
-    bot.sendMessage(chatId, answer, opts)
+    bot.sendMessage(chatId, answer)
+    getAnswer(settings.puzzle, chatId);
   }
   
   if(data == "random") {
@@ -284,7 +270,22 @@ function capitalizeFirstLetter(string) {
 }
 
 
-
+async function getAnswer(puzzle, chatId) {
+  await getAudioDB({word: puzzle})
+  .then(res => {
+    console.log('random word', res.word)
+    let deflatedWord = zlib.inflateSync(new Buffer(res.media.deflatedWord, 'base64')).toString();
+    let audio = Buffer.from(deflatedWord, 'base64');
+    const fileOptions = {
+      // Explicitly specify the file name.
+      filename: puzzle,
+      // Explicitly specify the MIME type.
+      contentType: 'application/octet-stream',
+    };
+            
+    return bot.sendAudio(chatId, audio, opts, fileOptions);  
+  })
+}
 
 
 /*MONGODB*/
@@ -613,5 +614,6 @@ https://www.oxfordlearnersdictionaries.com/definition/english/
 
 /*
 //84.201.159.199
+// ssh -i ~/.ssh/id_rsa.pub artem@84.201.159.199
 */
 
