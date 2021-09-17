@@ -115,9 +115,27 @@ bot.on('message', (msg) => {
   // send a message to the chat acknowledging receipt of their message
 
   if(chatIdList[chatId] && chatIdList[chatId].settings.game) {
-    if(chatIdList[chatId].settings.puzzle === msg.text.toLowerCase()) {
+    let puzzle = msg.text.toLowerCase()
+    if(chatIdList[chatId].settings.puzzle === puzzle) {
       chatIdList[chatId].settings.game = false;
-      bot.sendMessage(chatId, msgTmps.puzzleSolved, opts)
+      bot.sendMessage(chatId, msgTmps.puzzleSolved)
+      
+      getAudioDB({word: puzzle})
+        .then(res => {
+          console.log('random word', res.word)
+          let deflatedWord = zlib.inflateSync(new Buffer(res.media.deflatedWord, 'base64')).toString();
+          let audio = Buffer.from(deflatedWord, 'base64');
+          const fileOptions = {
+            // Explicitly specify the file name.
+            filename: puzzle,
+            // Explicitly specify the MIME type.
+            contentType: 'application/octet-stream',
+          };
+            
+          return bot.sendAudio(chatId, audio, opts, fileOptions);  
+        })
+
+
     } else {
       bot.sendMessage(chatId, msgTmps.puzzleWrong, answerBoard)
     }
@@ -182,7 +200,22 @@ bot.on("callback_query", (callBackQuery) => {
           let flashCard = dictionary.getFlashCard(res[0]);
 
           bot.sendMessage(chatId, `${flashCard}`)
+          return getAudioDB({word: settings.puzzle });
         })
+        .then((res) => {
+          console.log('random word', res.word)
+          let deflatedContext = zlib.inflateSync(new Buffer(res.media.deflatedContext, 'base64')).toString();
+          let audio = Buffer.from(deflatedContext, 'base64');
+          const fileOptions = {
+            // Explicitly specify the file name.
+            filename: "Listen carefully to find the word",
+            // Explicitly specify the MIME type.
+            contentType: 'application/octet-stream',
+          };
+            
+          return bot.sendAudio(chatId, audio, {}, fileOptions);         
+        })
+        .catch(console.error);
     }
   
     sendRandomWord() 
@@ -297,7 +330,265 @@ if(process.env.NODE_ENV === 'DEVELOPMENT') {
 
 
 
+async function insertMetaDB(record) {
+    console.log(record);
+  const client = new MongoClient(uri);
+  let result;
+  try {
+    await client.connect();
+    let flashCard = getFlashcardRecord(record);    
+    //await insertFlashCardMeta(client, flashCard)
+    await insertFlashCardAudio(client, flashCard, {media: {} })
 
+  } catch (e) {
+    console.error(e);
+  } finally {
+    await client.close();
+    return result;
+  }
+  
+}
+
+function getFlashcardRecord ( jsonRecord ) {
+
+  let record =  {
+    theme: jsonRecord.theme,
+    topic: jsonRecord.topic,
+    set: jsonRecord.set,
+    word: jsonRecord.word,
+    meta: {
+      class: jsonRecord.class,
+      transcription: jsonRecord.transcription,
+      context: jsonRecord.context,
+      eg: jsonRecord.eg,
+      level: jsonRecord.level,
+      freq: jsonRecord.freq,
+    },
+    //url: jsonRecord.url,
+    //imgAuth: jsonRecord.imgAuth,
+    media: {
+      videoId: "",
+      audioId: "",
+    }
+  }
+  
+  return record; 
+}
+
+async function insertFlashCardAudio (client, flashCard, flashCardAudio) {
+  console.log(flashCard)
+  let pathAudioContext = `./toefl/${flashCard.theme}-audio/${flashCard.theme}-${flashCard.word}-context.mp3`
+  let pathAudioWord = `./toefl/${flashCard.theme}-audio/${flashCard.theme}-${flashCard.word}-word.mp3`
+  
+  let audioWord = fs.readFileSync(pathAudioWord, 'base64');
+  let deflatedWord = zlib.deflateSync(audioWord).toString('base64');
+  
+  let audioContext = fs.readFileSync(pathAudioContext, 'base64');
+  let deflatedContext = zlib.deflateSync(audioContext).toString('base64');
+  
+  flashCardAudio.word = flashCard.word;
+  flashCardAudio.media.deflatedWord= deflatedWord;
+  flashCardAudio.media.deflatedContext = deflatedContext;
+
+  /*let pathAudio = `./toefl/${flashCard.topic}/${flashCard.word}/${flashCard.topic}-${flashCard.word}.mp4`
+  let audio = fs.readFileSync(pathAudio, 'base64');
+  flashCard.media.audio = audio;*/
+  
+  await client.db("flashcards").collection("audio").insertOne(flashCardAudio);
+  
+  console.log('insertFlashCardAudio path', path)
+
+}
+
+async function insertFlashCardMeta (client, flashCard) {
+
+  const result = await client.db("flashcards").collection("toefl").insertOne(flashCard);
+  
+  console.log('insertFlashCardMeta ')
+  return result;
+}
+
+async function getAudioDB(word) {
+
+  const client = new MongoClient(uri);
+  let result;
+  try {
+    await client.connect();
+    await getFlashCardAudio(client, word)
+      .then(res => {
+        result = res;
+        console.log('getAudioDB then', res.word)
+      });
+    
+  } catch (e) {
+    console.error(e);
+  } finally {
+    await client.close();
+    return result;
+  }
+  
+}
+
+async function getFlashCardAudio (client, word) {
+  console.log('getFlashCardAudio', word)
+  const result = await client.db("flashcards").collection("audio").findOne(word);
+  console.log('getFlashCardAudio', result.word)
+  return result;
+
+}
+
+const jsonRecords = [
+  {
+    "theme": "health",
+    "topic": "fitness",
+    "set": "fitness_1",
+    "word": "treadmill",
+    "class": "noun",
+    "transcription": "/ˈtredmɪl/",
+    "freq": 2,
+    "level": "C2",
+    "context": "Recommended activities included light jogging, treadmill and stationary bicycle.",
+    "eg": "an exercise machine that has a moving surface that you can walk or run on while remaining in the same place.",
+    "url": "",
+    "imgAuth": ""
+  },
+  {
+    "theme": "health",
+    "topic": "fitness",
+    "set": "fitness_1",
+    "word": "burn",
+    "class": "noun",
+    "transcription": "/bɜːrn/",
+    "freq": 3,
+    "level": "B2",
+    "context": "It also increases the intensity to burn more calories.",
+    "eg": "the feeling that you get in your muscles when you have done a lot of exercise.",
+    "url": "",
+    "imgAuth": ""
+  },
+  {
+    "theme": "health",
+    "topic": "fitness",
+    "set": "fitness_1",
+    "word": "circulation",
+    "class": "noun",
+    "transcription": "/ˌsɜːrkjəˈleɪʃn/",
+    "freq": 4,
+    "level": "C1",
+    "context": "Stimulates circulation and provides a pleasant feeling of relaxation and freshness.",
+    "eg": "is the movement of blood through your body.",
+    "url": "",
+    "imgAuth": ""
+  },
+  {
+    "theme": "health",
+    "topic": "fitness",
+    "set": "fitness_1",
+    "word": "aerobic",
+    "class": "adjective",
+    "transcription": "/eˈrəʊbɪk/",
+    "freq": 2,
+    "level": "C1",
+    "context": "Interval training mixes aerobic activity with strength exercises to burn twice the fat, though.",
+    "eg": "(of exercise) improving the body's ability to use oxygen.",
+    "url": "",
+    "imgAuth": ""
+  },
+  {
+    "theme": "health",
+    "topic": "fitness",
+    "set": "fitness_1",
+    "word": "workout",
+    "class": "noun",
+    "transcription": "/ˈwɜːrkaʊt/",
+    "freq": 2,
+    "level": "C1",
+    "context": "Walking is a great cardio workout for beginners.",
+    "eg": "is a period of physical exercise or training.",
+    "url": "",
+    "imgAuth": ""
+  },
+  {
+    "theme": "health",
+    "topic": "fitness",
+    "set": "fitness_1",
+    "word": "stamina",
+    "class": "noun",
+    "transcription": "/ˈstæmɪnə/",
+    "freq": 2,
+    "level": "C1",
+    "context": "It alleviates insomnia, improves digestion and helps build balance and stamina.",
+    "eg": "is the physical or mental energy needed to do a tiring activity for a long time.",
+    "url": "",
+    "imgAuth": ""
+  },
+  {
+    "theme": "health",
+    "topic": "fitness",
+    "set": "fitness_1",
+    "word": "heartbeat",
+    "class": "noun",
+    "transcription": "/ˈhɑːrtbiːt/",
+    "freq": 2,
+    "level": "B2",
+    "context": "Magnesium regulates the heartbeat and muscle contractions of the heart.",
+    "eg": "is the regular movement of your heart as it pumps blood around your body.",
+    "url": "",
+    "imgAuth": ""
+  },
+  {
+    "theme": "health",
+    "topic": "fitness",
+    "set": "fitness_1",
+    "word": "wellness",
+    "class": "noun",
+    "transcription": "/ˈwelnəs/",
+    "freq": 2,
+    "level": "C2",
+    "context": "Yoga is said to promote the wellness of the mind and body.",
+    "eg": "is how healthy you are, and how well and happy you feel.",
+    "url": "",
+    "imgAuth": ""
+  },
+  {
+    "theme": "health",
+    "topic": "fitness",
+    "set": "fitness_1",
+    "word": "anaerobic",
+    "class": "adjective",
+    "transcription": "/ˌænəˈrəʊbɪk/",
+    "freq": 2,
+    "level": "C2",
+    "context": "You see jumping rope is considered anaerobic exercise.",
+    "eg": "(of physical exercise) not especially designed to improve the function of the heart and lungs",
+    "url": "",
+    "imgAuth": ""
+  },
+  {
+    "theme": "health",
+    "topic": "fitness",
+    "set": "fitness_1",
+    "word": "jogging",
+    "class": "noun",
+    "transcription": "/ˈdʒɑːɡɪŋ/",
+    "freq": 2,
+    "level": "A2",
+    "context": "Treadmills are a first-class alternative for walking or jogging.",
+    "eg": "running at a slow regular pace usually over a long distance as part of an exercise routine",
+    "url": "",
+    "imgAuth": ""
+  }
+]
+
+//insertMetaDB(jsonRecords[0]);
+
+
+/*
+Promise.all([...jsonRecords.map((i) => {
+
+  return insertMetaDB(i)
+})]);
+*/
 /*
 
 interval - Set period of time between messages with TOEFL FlashCards
