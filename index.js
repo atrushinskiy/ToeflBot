@@ -199,7 +199,7 @@ bot.on("callback_query", (callBackQuery) => {
             contentType: 'application/octet-stream',
           };
             
-          return bot.sendAudio(chatId, audio, {}, fileOptions);         
+          return bot.sendVoice(chatId, audio, {}, fileOptions);         
         })
         .catch(console.error);
     }
@@ -235,7 +235,7 @@ let getDictionary = () => {
       let indexes = Array.from(Array(word.length).keys());
       let random = shuffle(indexes);
       let array = word.split('');
-      for (let i = 0; i < 2; i++) {
+      for (let i = 0; i < 3; i++) {
         let y = random.pop();
         array[y] = ' _';
       }
