@@ -62,6 +62,16 @@ const opts = {
     })
   };
 
+const nextWord = {
+        reply_to_message_id: null,
+        reply_markup: JSON.stringify({
+        inline_keyboard: 
+        [
+            [{text: 'Next random word', callback_data: 'random'}],
+        ]
+    })
+  };
+
 
 const answerBoard = {
         reply_to_message_id: null,
@@ -283,7 +293,7 @@ async function getAnswer(puzzle, chatId) {
       contentType: 'application/octet-stream',
     };
             
-    return bot.sendAudio(chatId, audio, opts, fileOptions);  
+    return bot.sendVoice(chatId, audio, nextWord, fileOptions);  
   })
 }
 
@@ -328,6 +338,25 @@ async function getRandomFlashCard (client) {
 if(process.env.NODE_ENV === 'DEVELOPMENT') {
   //insertMetaDB(jsonRecords[5]).then(res => console.log('main', res.word)).catch(console.error);
 }
+
+
+async function removeDocumentsDB() {
+
+  const client = new MongoClient(uri);
+  let result;
+  try {
+    await client.connect();
+    await removeDocs(client)
+
+  } catch (e) {
+    console.error(e);
+  } finally {
+    await client.close();
+    return result;
+  }
+  
+}
+
 
 
 
@@ -378,8 +407,8 @@ function getFlashcardRecord ( jsonRecord ) {
 
 async function insertFlashCardAudio (client, flashCard, flashCardAudio) {
   console.log(flashCard)
-  let pathAudioContext = `./toefl/${flashCard.theme}-audio/${flashCard.theme}-${flashCard.word}-context.mp3`
-  let pathAudioWord = `./toefl/${flashCard.theme}-audio/${flashCard.theme}-${flashCard.word}-word.mp3`
+  let pathAudioContext = `./toefl/${flashCard.theme}-audio/${flashCard.theme}-${flashCard.word}-context.opus`
+  let pathAudioWord = `./toefl/${flashCard.theme}-audio/${flashCard.theme}-${flashCard.word}-word.opus`
   
   let audioWord = fs.readFileSync(pathAudioWord, 'base64');
   let deflatedWord = zlib.deflateSync(audioWord).toString('base64');
@@ -408,6 +437,15 @@ async function insertFlashCardMeta (client, flashCard) {
   console.log('insertFlashCardMeta ')
   return result;
 }
+
+
+async function removeDocs (client) {
+
+  const result = await client.db("flashcards").collection("audio").remove({});
+  
+  return result;
+}
+
 
 async function getAudioDB(word) {
 
@@ -440,144 +478,124 @@ async function getFlashCardAudio (client, word) {
 
 const jsonRecords = [
   {
-    "theme": "health",
-    "topic": "fitness",
-    "set": "fitness_1",
-    "word": "treadmill",
+    "theme": "nature",
+    "topic": "crops",
+    "set": "nature_1",
+    "word": "abandon",
+    "class": "verb",
+    "transcription": "/əˈbændən/",
+    "freq": 4,
+    "level": "B1",
+    "context": "Farmers will be forced to abandon trees in favour of food crops.",
+    "eg": "to leave a place, thing, or person, usually for ever."
+  },
+  {
+    "theme": "nature",
+    "topic": "crops",
+    "set": "nature_1",
+    "word": "adverse",
+    "class": "adjective",
+    "transcription": "/ædˈvɝːs/",
+    "freq": 4,
+    "level": "C2",
+    "context": "Conflicts and adverse climate exacerbate food crises in Africa and elsewhere.",
+    "eg": "having a negative or harmful effect on something."
+  },
+  {
+    "theme": "nature",
+    "topic": "crops",
+    "set": "nature_1",
+    "word": "cultivation",
     "class": "noun",
-    "transcription": "/ˈtredmɪl/",
+    "transcription": "/ˌkʌl·təˈveɪ·ʃən/",
+    "freq": 3,
+    "level": "C1",
+    "context": "Firstly, olive cultivation involves intensive manual labour.",
+    "eg": "to prepare land and grow crops on it, or to grow a particular crop."
+  },
+  {
+    "theme": "nature",
+    "topic": "crops",
+    "set": "nature_1",
+    "word": "harvest",
+    "class": "noun",
+    "transcription": "/ˈhɑːrvɪst/",
+    "freq": 3,
+    "level": "C1",
+    "context": "The harvest began 15-20 days earlier than usual.",
+    "eg": "to pick and collect crops, or to collect plants, animals, or fish to eat."
+  },
+  {
+    "theme": "nature",
+    "topic": "crops",
+    "set": "nature_1",
+    "word": "intensify",
+    "class": "verb",
+    "transcription": "/ɪnˈten.sə.faɪ/",
+    "freq": 3,
+    "level": "C2",
+    "context": "Both rain-fed and irrigated agriculture will have to intensify.",
+    "eg": "to become greater, more serious, or more extreme, or to make something do this."
+  },
+  {
+    "theme": "nature",
+    "topic": "crops",
+    "set": "nature_1",
+    "word": "irrigate",
+    "class": "verb",
+    "transcription": "/ˈɪr.ə.ɡeɪt/",
     "freq": 2,
     "level": "C2",
-    "context": "Recommended activities included light jogging, treadmill and stationary bicycle.",
-    "eg": "an exercise machine that has a moving surface that you can walk or run on while remaining in the same place.",
-    "url": "",
-    "imgAuth": ""
+    "context": "With these infrastructure, the farmers can irrigate their fields thoroughly.",
+    "eg": "to supply land with water so that crops and plants will grow."
   },
   {
-    "theme": "health",
-    "topic": "fitness",
-    "set": "fitness_1",
-    "word": "burn",
-    "class": "noun",
-    "transcription": "/bɜːrn/",
+    "theme": "nature",
+    "topic": "crops",
+    "set": "nature_1",
+    "word": "arable",
+    "class": "adjective",
+    "transcription": "/ˈærəbl/",
     "freq": 3,
-    "level": "B2",
-    "context": "It also increases the intensity to burn more calories.",
-    "eg": "the feeling that you get in your muscles when you have done a lot of exercise.",
-    "url": "",
-    "imgAuth": ""
+    "level": "C2",
+    "context": "They also argue that, contrary to popular belief, we are not running out of arable land.",
+    "eg": "capable of producing crops; suitable for farming."
   },
   {
-    "theme": "health",
-    "topic": "fitness",
-    "set": "fitness_1",
-    "word": "circulation",
+    "theme": "nature",
+    "topic": "crops",
+    "set": "nature_1",
+    "word": "fertilize",
+    "class": "verb",
+    "transcription": "/ˈfɝː.t̬əl.aɪz/",
+    "freq": 2,
+    "level": "C1",
+    "context": "Fertilize your lawn at the beginning of each growing season.",
+    "eg": "to spread a natural or chemical substance on land in order to make plants grow well."
+  },
+  {
+    "theme": "nature",
+    "topic": "crops",
+    "set": "nature_1",
+    "word": "yield",
     "class": "noun",
-    "transcription": "/ˌsɜːrkjəˈleɪʃn/",
+    "transcription": "/jiːld/",
     "freq": 4,
     "level": "C1",
-    "context": "Stimulates circulation and provides a pleasant feeling of relaxation and freshness.",
-    "eg": "is the movement of blood through your body.",
-    "url": "",
-    "imgAuth": ""
+    "context": "Favourable weather yielded a good crop.",
+    "eg": "is the amount of food produced on an area of land or by a number of animals."
   },
   {
-    "theme": "health",
-    "topic": "fitness",
-    "set": "fitness_1",
-    "word": "aerobic",
-    "class": "adjective",
-    "transcription": "/eˈrəʊbɪk/",
+    "theme": "nature",
+    "topic": "crops",
+    "set": "nature_1",
+    "word": "vineyard",
+    "class": "noun",
+    "transcription": "/ˈvɪnjərd/",
     "freq": 2,
     "level": "C1",
-    "context": "Interval training mixes aerobic activity with strength exercises to burn twice the fat, though.",
-    "eg": "(of exercise) improving the body's ability to use oxygen.",
-    "url": "",
-    "imgAuth": ""
-  },
-  {
-    "theme": "health",
-    "topic": "fitness",
-    "set": "fitness_1",
-    "word": "workout",
-    "class": "noun",
-    "transcription": "/ˈwɜːrkaʊt/",
-    "freq": 2,
-    "level": "C1",
-    "context": "Walking is a great cardio workout for beginners.",
-    "eg": "is a period of physical exercise or training.",
-    "url": "",
-    "imgAuth": ""
-  },
-  {
-    "theme": "health",
-    "topic": "fitness",
-    "set": "fitness_1",
-    "word": "stamina",
-    "class": "noun",
-    "transcription": "/ˈstæmɪnə/",
-    "freq": 2,
-    "level": "C1",
-    "context": "It alleviates insomnia, improves digestion and helps build balance and stamina.",
-    "eg": "is the physical or mental energy needed to do a tiring activity for a long time.",
-    "url": "",
-    "imgAuth": ""
-  },
-  {
-    "theme": "health",
-    "topic": "fitness",
-    "set": "fitness_1",
-    "word": "heartbeat",
-    "class": "noun",
-    "transcription": "/ˈhɑːrtbiːt/",
-    "freq": 2,
-    "level": "B2",
-    "context": "Magnesium regulates the heartbeat and muscle contractions of the heart.",
-    "eg": "is the regular movement of your heart as it pumps blood around your body.",
-    "url": "",
-    "imgAuth": ""
-  },
-  {
-    "theme": "health",
-    "topic": "fitness",
-    "set": "fitness_1",
-    "word": "wellness",
-    "class": "noun",
-    "transcription": "/ˈwelnəs/",
-    "freq": 2,
-    "level": "C2",
-    "context": "Yoga is said to promote the wellness of the mind and body.",
-    "eg": "is how healthy you are, and how well and happy you feel.",
-    "url": "",
-    "imgAuth": ""
-  },
-  {
-    "theme": "health",
-    "topic": "fitness",
-    "set": "fitness_1",
-    "word": "anaerobic",
-    "class": "adjective",
-    "transcription": "/ˌænəˈrəʊbɪk/",
-    "freq": 2,
-    "level": "C2",
-    "context": "You see jumping rope is considered anaerobic exercise.",
-    "eg": "(of physical exercise) not especially designed to improve the function of the heart and lungs",
-    "url": "",
-    "imgAuth": ""
-  },
-  {
-    "theme": "health",
-    "topic": "fitness",
-    "set": "fitness_1",
-    "word": "jogging",
-    "class": "noun",
-    "transcription": "/ˈdʒɑːɡɪŋ/",
-    "freq": 2,
-    "level": "A2",
-    "context": "Treadmills are a first-class alternative for walking or jogging.",
-    "eg": "running at a slow regular pace usually over a long distance as part of an exercise routine",
-    "url": "",
-    "imgAuth": ""
+    "context": "The vineyard's new season really starts early April.",
+    "eg": "is an area of land where grape vines are grown in order to produce wine."
   }
 ]
 
@@ -590,15 +608,17 @@ Promise.all([...jsonRecords.map((i) => {
   return insertMetaDB(i)
 })]);
 */
-/*
 
-interval - Set period of time between messages with TOEFL FlashCards
-options - Set options for TOEFL FlashCards
-
-*/
+//removeDocumentsDB();
+/////////////////////////////////////////////////////////////////////////////
 
 /*
 https://speech.microsoft.com/portal/578716f61a894609ae5a30025b84713c/audiocontentcreation
+
+for f in *.wav; do ffmpeg -i "$f" -c:a libopus "${f%.*}.opus" -b:a 32k; done
+
+find . -type f -execdir rename 'y/A-Z/a-z/' {} \;
+
 https://docs.google.com/spreadsheets/d/14N-84W12l_WxY7l038HQiqSIEEbOJFbcjnEfWk0fwUk/edit?usp=drive_web&ouid=110277816954849002273
 https://www.addmusictophoto.com/
 https://unsplash.com/
